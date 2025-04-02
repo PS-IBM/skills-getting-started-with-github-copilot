@@ -8,6 +8,7 @@ for extracurricular activities at Mergington High School.
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, EmailStr
 import os
 from pathlib import Path
 
@@ -94,19 +95,67 @@ def get_activities():
     return activities
 
 
+@app.get("/activities/{activity_name}")
+def get_activity(activity_name: str):
+    """Get details of a specific activity"""
+    if activity_name not in activities:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return activities[activity_name]
+
+
+class SignupRequest(BaseModel):
+    email: EmailStr
+
+
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
+def signup_for_activity(activity_name: str, signup_request: SignupRequest):
     """Sign up a student for an activity"""
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
 
-    # Get the specificy activity
+    # Get the specific activity
     activity = activities[activity_name]
 
     # Validate student is not already signed up
-    if email in activity["participants"]:
+    if signup_request.email in activity["participants"]:
         raise HTTPException(status_code=400, detail="Student already signed up")
+
+    # Validate maximum participants
+    if len(activity["participants"]) >= activity["max_participants"]:
+        raise HTTPException(status_code=400, detail="Activity is full")
+
     # Add student
-    activity["participants"].append(email)
-    return {"message": f"Signed up {email} for {activity_name}"}
+    activity["participants"].append(signup_request.email)
+    return {"message": f"Signed up {signup_request.email} for {activity_name}"}
+
+
+@app.delete("/activities/{activity_name}/remove")
+def remove_participant(activity_name: str, email: EmailStr):
+    """Remove a student from an activity"""
+    # Validate activity exists
+    if activity_name not in activities:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    # Get the specific activity
+    activity = activities[activity_name]
+
+    # Validate student is signed up
+    if email not in activity["participants"]:
+        raise HTTPException(status_code=400, detail="Student not signed up for this activity")
+
+    # Remove student
+    activity["participants"].remove(email)
+    return {"message": f"Removed {email} from {activity_name}"}
+
+
+@app.delete("/activities/{activity_name}")
+def delete_activity(activity_name: str):
+    """Delete an activity"""
+    # Validate activity exists
+    if activity_name not in activities:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    # Delete activity
+    del activities[activity_name]
+    return {"message": f"Deleted activity {activity_name}"}
